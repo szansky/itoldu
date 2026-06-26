@@ -1,7 +1,23 @@
 $ErrorActionPreference = "Stop"
 
+function Invoke-ProjectPython {
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$PythonArgs
+    )
+
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if ($python) {
+        & $python.Source @PythonArgs
+        return
+    }
+
+    $launcher = Get-Command py -ErrorAction Stop
+    & $launcher.Source -3.12 @PythonArgs
+}
+
 if (-not (Test-Path ".venv")) {
-    py -m venv .venv
+    Invoke-ProjectPython -m venv .venv
 }
 
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
