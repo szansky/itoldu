@@ -12,6 +12,7 @@ Lekka aplikacja do dyktowania tekstu do dowolnego aktywnego okna. Przytrzymujesz
 - Tryb z tlumaczeniem: rozpoznany tekst idzie przez DeepSeek na wybrany jezyk.
 - Dokladny hotkey po fizycznym klawiszu, wiec lewy i prawy taki sam klawisz moga byc rozroznione.
 - Maly overlay statusu w rogu ekranu: nagrywanie, przetwarzanie, wklejanie.
+- Autostart po zalogowaniu do Windows i start zminimalizowany.
 - Klucz API moze byc w `.env` albo zapisany z poziomu appki. Lokalny klucz na Windows jest zapisywany przez DPAPI, a nie jako zwykly tekst.
 - UI w kilku jezykach.
 
@@ -53,9 +54,10 @@ Plik `.env` jest ignorowany przez git. Nie wrzucaj tam cudzego ani prywatnego kl
 1. Wybierz mikrofon.
 2. Kliknij **Zlap klawisz** i nacisnij klawisz, ktory ma byc hotkeyem.
 3. Zostaw wlaczone **Paste to active window**, jesli tekst ma sam trafic do aktualnego okna.
-4. Jesli chcesz samo dyktowanie, wylacz **DeepSeek translation**.
-5. Jesli chcesz tlumaczenie, wlacz **DeepSeek translation** i wybierz jezyk docelowy.
-6. Przytrzymaj hotkey, powiedz zdanie, pusc hotkey.
+4. Jesli chcesz, zaznacz **Launch on Windows startup** oraz **Start minimized**.
+5. Jesli chcesz samo dyktowanie, wylacz **DeepSeek translation**.
+6. Jesli chcesz tlumaczenie, wlacz **DeepSeek translation** i wybierz jezyk docelowy.
+7. Przytrzymaj hotkey, powiedz zdanie, pusc hotkey.
 
 Domyslny hotkey po pierwszym uruchomieniu to `-`.
 

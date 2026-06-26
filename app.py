@@ -4,6 +4,7 @@ import ctypes
 import io
 import json
 import os
+import sys
 import queue
 import socket
 import tempfile
@@ -14,6 +15,9 @@ from dataclasses import asdict, dataclass
 from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any
+
+if os.name == "nt":
+    import winreg
 
 import keyboard
 import numpy as np
@@ -106,6 +110,9 @@ I18N: dict[str, dict[str, str]] = {
         "preview": "Preview",
         "processing": "Processing...",
         "recording": "Recording...",
+        "start_minimized": "Start minimized",
+        "startup": "Startup",
+        "launch_on_startup": "Launch on Windows startup",
         "save_hotkey": "Save hotkey",
         "save_key": "Save key",
         "save_settings": "Save settings",
@@ -159,6 +166,9 @@ I18N: dict[str, dict[str, str]] = {
         "preview": "Podglad",
         "processing": "Przetwarzanie...",
         "recording": "Nagrywanie...",
+        "start_minimized": "Startuj zminimalizowana",
+        "startup": "Start systemu",
+        "launch_on_startup": "Uruchamiaj po starcie Windows",
         "save_hotkey": "Zapisz hotkey",
         "save_key": "Zapisz klucz",
         "save_settings": "Zapisz ustawienia",
@@ -333,6 +343,55 @@ def app_config_path() -> Path:
     return Path.home() / ".itoldu" / "config.json"
 
 
+def app_executable_path() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve()
+    return Path(sys.executable).resolve()
+
+
+def app_launch_command() -> str:
+    exe = app_executable_path()
+    if getattr(sys, "frozen", False):
+        return f'"{exe}"'
+    script = (Path(__file__).resolve()).as_posix()
+    return f'"{exe}" "{script}"'
+
+
+def startup_registry_key() -> str:
+    return r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+
+def startup_registry_name() -> str:
+    return APP_NAME
+
+
+def is_windows_startup_enabled() -> bool:
+    if os.name != "nt":
+        return False
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, startup_registry_key(), 0, winreg.KEY_READ) as key:
+            winreg.QueryValueEx(key, startup_registry_name())
+            return True
+    except Exception:
+        return False
+
+
+def set_windows_startup_enabled(enabled: bool) -> None:
+    if os.name != "nt":
+        return
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, startup_registry_key(), 0, winreg.KEY_SET_VALUE) as key:
+            if enabled:
+                winreg.SetValueEx(key, startup_registry_name(), 0, winreg.REG_SZ, app_launch_command())
+            else:
+                try:
+                    winreg.DeleteValue(key, startup_registry_name())
+                except FileNotFoundError:
+                    pass
+    except Exception:
+        pass
+
+
 def load_dotenv_file() -> None:
     env_path = Path.cwd() / ".env"
     if not env_path.exists():
@@ -377,6 +436,8 @@ class Settings:
     deepseek_model: str = "deepseek-v4-flash"
     mic_device: str = ""
     auto_paste: bool = True
+    start_minimized: bool = True
+    launch_on_startup: bool = True
 
 
 class ConfigStore:
@@ -946,6 +1007,7 @@ class IToldUApp:
         self.root.after(2500, self.refresh_network_state)
         self._set_runtime_state(self.t("listening"))
         self._set_connection_state(self.t("internet_check"))
+        self.apply_startup_behavior()
 
     def configure_styles(self) -> None:
         if "clam" in self.style.theme_names():
@@ -1018,9 +1080,12 @@ class IToldUApp:
         self.enabled_var = tk.BooleanVar(value=self.settings.enabled)
         self.translate_var = tk.BooleanVar(value=self.settings.translate_enabled)
         self.auto_paste_var = tk.BooleanVar(value=self.settings.auto_paste)
+        self.start_minimized_var = tk.BooleanVar(value=self.settings.start_minimized)
+        self.launch_on_startup_var = tk.BooleanVar(value=self.settings.launch_on_startup if os.name == "nt" else False)
         ttk.Checkbutton(controls, text=self.t("app_on"), variable=self.enabled_var, command=self.save_from_ui).grid(row=0, column=0, sticky="w", padx=(0, 16))
         ttk.Checkbutton(controls, text=self.t("translate"), variable=self.translate_var, command=self.save_from_ui).grid(row=0, column=1, sticky="w")
         ttk.Checkbutton(controls, text=self.t("auto_paste"), variable=self.auto_paste_var, command=self.save_from_ui).grid(row=0, column=2, sticky="w", padx=(16, 0))
+        ttk.Checkbutton(controls, text=self.t("start_minimized"), variable=self.start_minimized_var, command=self.save_from_ui).grid(row=0, column=3, sticky="w", padx=(16, 0))
 
         ttk.Label(controls, text=self.t("hotkey")).grid(row=1, column=0, sticky="w", pady=(12, 0))
         self.hotkey_var = tk.StringVar(value=self.settings.hotkey)
@@ -1106,6 +1171,12 @@ class IToldUApp:
             values=list(UI_LANGUAGE_OPTIONS.values()),
         ).grid(row=5, column=1, sticky="ew", padx=(8, 16), pady=(12, 0))
         ttk.Button(options, text=self.t("save_settings"), command=self.save_from_ui).grid(row=5, column=3, sticky="e", pady=(12, 0))
+
+        startup_row = ttk.LabelFrame(container, text=self.t("startup"), padding=14, style="Card.TLabelframe")
+        startup_row.pack(fill="x", pady=(0, 10))
+        startup_row.columnconfigure(1, weight=1)
+        ttk.Checkbutton(startup_row, text=self.t("launch_on_startup"), variable=self.launch_on_startup_var, command=self.save_from_ui).grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(startup_row, text=self.t("start_minimized"), variable=self.start_minimized_var, command=self.save_from_ui).grid(row=0, column=1, sticky="w", padx=(16, 0))
 
         output = ttk.LabelFrame(container, text=self.t("preview"), padding=14, style="Card.TLabelframe")
         output.pack(fill="both", expand=True)
@@ -1284,6 +1355,8 @@ class IToldUApp:
         self.settings.target_language = self.target_lang_var.get().strip() or "polski"
         self.settings.app_language = self.selected_app_language_code()
         self.settings.status_display_mode = self.status_mode_var.get().strip() or "icons"
+        self.settings.start_minimized = bool(self.start_minimized_var.get())
+        self.settings.launch_on_startup = bool(self.launch_on_startup_var.get()) if os.name == "nt" else False
         typed_key = self.api_key_var.get().strip()
         if typed_key:
             self.settings.deepseek_api_key = typed_key
@@ -1292,6 +1365,8 @@ class IToldUApp:
         self.settings.deepseek_model = self.model_var.get().strip() or "deepseek-v4-flash"
         self.settings.mic_device = self.mic_var.get()
         self.config.save(self.settings)
+        if os.name == "nt":
+            set_windows_startup_enabled(self.settings.launch_on_startup)
         self.set_status(self.t("saved"))
         if self.settings.enabled:
             self._set_runtime_state(f"{self.t('listening')}: {self.hotkey_display_text()}")
@@ -1307,6 +1382,13 @@ class IToldUApp:
             self._build_ui()
             self.refresh_devices(select_saved=True)
         self.toast.show(self.t("saved"), f"Hotkey: {self.hotkey_display_text()}", state="ok")
+
+    def apply_startup_behavior(self) -> None:
+        if self.settings.launch_on_startup and os.name == "nt":
+            set_windows_startup_enabled(True)
+        if self.settings.start_minimized:
+            self.root.after(120, self.root.iconify)
+            self.root.after(200, self.status_overlay.show)
 
     def on_hotkey_down(self) -> None:
         if not self.enabled_var.get() or self.recording or self.processing:
